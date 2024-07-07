@@ -11,6 +11,7 @@ import { exit } from "process";
 import { Exiftool } from "@mattduffy/exiftool";
 import { readFileSync } from "fs";
 import path from "path";
+import { convertDMS } from "./dms.js";
 
 // PARSE ARGUMENTS
 const program = new Command();
@@ -25,7 +26,7 @@ program
     "./json/memories_history.json"
   )
   .option("-o <directory>", "Download directory", "Downloads")
-  .option("-l", "Preserve location data as file metadata", false);
+  .option("-l", "Preserve date and location data as file metadata", false);
 
 program.parse();
 const options = program.opts();
@@ -196,40 +197,59 @@ const downloadMemory = (downloadUrl, fileName, fileTime, lat = "", long = "") =>
                 mtime: fileTime.valueOf(), // modified time (Windows, Mac, Linux)
               });
   
-              // Update the file location metadata
+              // Update the file date and location metadata
               if (options.l) {
-                if (lat && long) {
+                const exiftool = new Exiftool();
+                await exiftool.init(filepath);
+                const fileType = fileName.split(".").pop();
 
-                  // Snapchat json will have "0.0" (string) for lat and long
-                  // if location is not available.
-                  // If so, don't write it in the metadata
-                  const writeLocationMetadata = lat !== "0.0" || long !== "0.0";
+                exiftool.setOverwriteOriginal(true);
 
-                  const exiftool = new Exiftool();
-                  await exiftool.init(filepath);
-  
-                  exiftool.setOverwriteOriginal(true);
-  
-                  let tagsToWrite = [
+                let tagsToWrite;
+
+                if (fileType === "jpg") {
+                  tagsToWrite = [
                     `-EXIF:DateTimeOriginal=${fileTime.format(
                       "YYYY-MM-DDTHH:mm:ss"
                     )}`,
                     `-EXIF:CreateDate=${fileTime.format("YYYY-MM-DDTHH:mm:ss")}`,
                   ];
-
-                  const locationTags = [
-                    `-EXIF:GPSLatitude=${lat}`,
-                    `-EXIF:GPSLongitude=${long}`,
-                    `-EXIF:GPSLatitudeRef=${parseFloat(lat) > 0 ? "N" : "S"}`,
-                    `-EXIF:GPSLongitudeRef=${parseFloat(long) > 0 ? "E" : "W"}`,
+                } else if (fileType === "mp4") {
+                  tagsToWrite = [
+                    `-Keys:CreationDate="${fileTime.format("YYYY:MM:DD HH:mm:ssZ")}"`,
                   ]
-
-                  if (writeLocationMetadata) {
-                    tagsToWrite = tagsToWrite.concat(locationTags);
-                  }
-  
-                  await exiftool.writeMetadataToTag(tagsToWrite);
                 }
+
+                // Snapchat json will have "0.0" (string) for lat and long
+                // if location is not available.
+                // If so, don't write it in the metadata
+                const writeLocationMetadata = (lat && long) && (lat !== "0.0" || long !== "0.0");
+
+                if (writeLocationMetadata) {
+                  let locationTags;
+
+                  if (fileType === "jpg") {
+                    locationTags = [
+                      `-EXIF:GPSLatitude=${lat}`,
+                      `-EXIF:GPSLongitude=${long}`,
+                      `-EXIF:GPSLatitudeRef=${parseFloat(lat) > 0 ? "N" : "S"}`,
+                      `-EXIF:GPSLongitudeRef=${parseFloat(long) > 0 ? "E" : "W"}`,
+                    ]
+                  } else if (fileType === "mp4") {
+                    const dms = convertDMS(parseFloat(lat), parseFloat(long));
+                    locationTags = [
+                      `-Keys:GPSCoordinates="${dms}"`,
+                    ];
+                  }
+
+                  tagsToWrite = tagsToWrite.concat(locationTags);
+                }
+
+                await exiftool.writeMetadataToTag(tagsToWrite).then((log) => {
+                  if (log.error) {
+                    console.error("Error writing metadata to file", log.error);
+                  }
+                });
               }
   
               resolve(true);
