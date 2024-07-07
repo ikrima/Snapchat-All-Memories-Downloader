@@ -68,9 +68,15 @@ function main() {
 
   // Start downloads
   for (let i = 0; i < downloads.length; i++) {
+    // Get sid from download link
+    const rawUrl = downloads[i]["Download Link"];
+    const parsedUrl = new URL(rawUrl);
+    const sid = parsedUrl.searchParams.get("sid");
+
+    // Split URL for getDownloadLink()
     let [url, body] = downloads[i]["Download Link"].split("?", 2);
     const fileTime = utc(downloads[i]["Date"], "YYYY-MM-DD HH:mm:ss Z");
-    let fileName = getFileName(downloads[i], fileTime);
+    let fileName = getFileName(downloads[i], fileTime, sid);
 
     // Parse "Location": "Latitude, Longitude: <lat>, <long>"
 
@@ -104,17 +110,11 @@ function main() {
   }
 }
 
-function getFileName(download, fileTime) {
+function getFileName(download, fileTime, sid) {
   var fileName = fileTime.format("YYYY-MM-DD_HH-mm-ss");
 
-    // Check if there already exists a file with the same name/timestamp
-    if (names.has(fileName)) {
-      var duplicates = 1;
-      while (names.has(fileName + ` (${duplicates})`)) {
-          duplicates++;
-      }
-      fileName += ` (${duplicates})`;
-    }
+  fileName += "_" + sid;
+
   names.add(fileName);
 
   if (
