@@ -199,21 +199,34 @@ const downloadMemory = (downloadUrl, fileName, fileTime, lat = "", long = "") =>
               // Update the file location metadata
               if (options.l) {
                 if (lat && long) {
+
+                  // Snapchat json will have "0.0" (string) for lat and long
+                  // if location is not available.
+                  // If so, don't write it in the metadata
+                  const writeLocationMetadata = lat !== "0.0" || long !== "0.0";
+
                   const exiftool = new Exiftool();
                   await exiftool.init(filepath);
   
                   exiftool.setOverwriteOriginal(true);
   
-                  const tagsToWrite = [
+                  let tagsToWrite = [
                     `-EXIF:DateTimeOriginal=${fileTime.format(
                       "YYYY-MM-DDTHH:mm:ss"
                     )}`,
                     `-EXIF:CreateDate=${fileTime.format("YYYY-MM-DDTHH:mm:ss")}`,
+                  ];
+
+                  const locationTags = [
                     `-EXIF:GPSLatitude=${lat}`,
                     `-EXIF:GPSLongitude=${long}`,
                     `-EXIF:GPSLatitudeRef=${parseFloat(lat) > 0 ? "N" : "S"}`,
                     `-EXIF:GPSLongitudeRef=${parseFloat(long) > 0 ? "E" : "W"}`,
-                  ];
+                  ]
+
+                  if (writeLocationMetadata) {
+                    tagsToWrite = tagsToWrite.concat(locationTags);
+                  }
   
                   await exiftool.writeMetadataToTag(tagsToWrite);
                 }
